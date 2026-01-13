@@ -4,7 +4,7 @@ from collections.abc import Callable
 from functools import lru_cache
 from typing import Any
 
-from hyrl.envs.base_env import BaseEnv
+from envs.base_env import BaseEnv
 
 
 class ApiBase(ABC):

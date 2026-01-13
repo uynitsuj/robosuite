@@ -10,7 +10,7 @@ import jax_dataclasses as jdc
 import jaxlie
 import jaxls
 import numpy as onp
-import pyroki as pk
+from api import pyroki as pk
 
 
 def solve_ik_with_collision(

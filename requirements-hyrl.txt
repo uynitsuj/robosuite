@@ -1,0 +1,29 @@
+# Core HYRL Integration Dependencies
+viser==1.0.17
+yourdfpy==0.0.58
+robot_descriptions==1.22.0
+h5py==3.15.1
+imageio-ffmpeg==0.6.0
+gymnasium==1.2.3
+matplotlib==3.10.8
+open3d==0.19.0
+
+# JAX & Pyroki Dependencies (Pinned for compatibility)
+numpy==1.26.4
+jax==0.4.38
+jaxlib==0.4.38
+jax-dataclasses==1.6.3
+jaxlie==1.5.0
+jaxls==2024.0.1
+tyro==1.0.4
+pydantic==2.12.5
+
+# Configuration & Utilities
+omegaconf==2.3.0
+hydra-core==1.3.2
+mujoco-python-viewer==0.1.4
+
+# Robotics & Optimization
+qpsolvers==4.8.2
+quadprog==0.1.13
+mink==0.0.5

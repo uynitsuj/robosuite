@@ -8,20 +8,20 @@ import viser.transforms as vtf
 from PIL import Image, ImageDraw
 from scipy.spatial.transform import Rotation as SciRotation
 
-from hyrl.envs.base_env import (
+from envs.base_env import (
     BaseEnv,
 )
 from api import pyroki_snippets as pks  # type: ignore
 from api.base_api import ApiBase
-# from hyrl.integrations.grasp_graspnet import init_contact_graspnet
-# from hyrl.integrations.owlvit import init_owlvit
-# from hyrl.integrations.pyroki import init_pyroki
+# from api.grasp_graspnet import init_contact_graspnet
+# from api.owlvit import init_owlvit
+# from api.pyroki import init_pyroki
 
-# from hyrl.integrations.pyroki_context import get_pyroki_context  # type: ignore
-# from hyrl.integrations.sam2 import init_sam2
-# from hyrl.integrations.sam3 import init_sam3, visualize_sam3_results
-# from hyrl.utils.camera_utils import obs_get_rgb
-# from hyrl.utils.depth_utils import depth_color_to_pointcloud, depth_to_pointcloud, depth_to_rgb
+# from api.pyroki_context import get_pyroki_context  # type: ignore
+# from api.sam2 import init_sam2
+# from api.sam3 import init_sam3, visualize_sam3_results
+# from utils.camera_utils import obs_get_rgb
+# from utils.depth_utils import depth_color_to_pointcloud, depth_to_pointcloud, depth_to_rgb
 
 
 # ------------------------------- Control API ------------------------------
@@ -46,8 +46,13 @@ class FrankaControlTapeHandoverPrivilegedApi(ApiBase):
         super().__init__(env)
         # Lazy-import to keep startup light
         self._TCP_OFFSET = np.array(tcp_offset, dtype=np.float64)
-        from hyrl.integrations import pyroki_snippets as pks  # type: ignore
-        from hyrl.integrations.pyroki_context import get_pyroki_context  # type: ignore
+        from api import pyroki_snippets as pks  # type: ignore
+        from api.pyroki_context import get_pyroki_context  # type: ignore
+        try:
+            from api import pyroki as pk
+            sys.modules["pyroki"] = pk
+        except ImportError:
+            pass
         ctx = get_pyroki_context("panda_description", target_link_name="panda_hand")
         self._robot = ctx.robot
         self._target_link_name = ctx.target_link_name
