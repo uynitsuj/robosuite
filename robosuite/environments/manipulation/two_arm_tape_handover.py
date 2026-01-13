@@ -349,17 +349,10 @@ class TwoArmTapeHandover(TwoArmEnv):
             obj_type="all",
             duplicate_collision_geoms=True,
         )
-        # yellow_tape_cad_xml_path = os.path.join(os.path.dirname(__file__), "../../assets/yellow_tape_cad/yellow_tape_cad.xml")
-        # self.yellow_tape = MujocoXMLObject(
-        #     fname=yellow_tape_cad_xml_path,
-        #     name="yellow_tape_cad",
-        #     joints=[dict(type="free", damping="0.0005")],
-        #     obj_type="all",
-        #     duplicate_collision_geoms=True,
-        # )
         duct_tape_xml_path = os.path.join(os.path.dirname(__file__), "../../assets/duct_tape/duct_tape.xml")
+        duct_tape_decomp_xml_path = os.path.join(os.path.dirname(__file__), "../../assets/duct_tape/obj2mjcf/duct_tape/duct_tape.xml")
         self.duct_tape = MujocoXMLObject(
-            fname=duct_tape_xml_path,
+            fname=duct_tape_decomp_xml_path, #duct_tape_xml_path,
             name="duct_tape",
             joints=[dict(type="free", damping="0.0005")],
             obj_type="all",
