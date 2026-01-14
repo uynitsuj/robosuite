@@ -8,7 +8,7 @@ import jax_dataclasses as jdc
 import jaxlie
 import jaxls
 import numpy as onp
-from api import pyroki as pk
+import pyroki as pk
 
 
 def solve_ik_with_manipulability(
