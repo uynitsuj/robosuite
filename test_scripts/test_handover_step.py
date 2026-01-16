@@ -29,7 +29,7 @@ def parse_offset_list(offset_str):
     Parse a comma-separated string of floats into a numpy array.
     
     Args:
-        offset_str: String like "0.0,-0.7,0.0" or "0.0,0.7,0.0"
+        offset_str: String like "0.2,-0.5,0.0" or "-0.3,0.5,0.0"
     
     Returns:
         numpy array of floats
@@ -56,13 +56,13 @@ Examples:
     parser.add_argument(
         '--yellow_offset',
         type=parse_offset_list,
-        default='0.0,-0.7,0.0',
+        default='0.2,0.5,0.0',
         help='Yellow tape offset as comma-separated x,y,z values (default: 0.0,-0.7,0.0)'
     )
     parser.add_argument(
         '--duct_offset',
         type=parse_offset_list,
-        default='0.0,0.7,0.0',
+        default='0.3,-0.5,0.0',
         help='Duct tape offset as comma-separated x,y,z values (default: 0.0,0.7,0.0)'
     )
     
@@ -167,20 +167,13 @@ Examples:
     # ------------------------------------
 
     action_code = f"""import numpy as np
-    # Format offsets for use in action code string
-    yellow_offset_str = f"np.array([{yellow_offset[0]}, {yellow_offset[1]}, {yellow_offset[2]}])"
-    duct_offset_str = f"np.array([{duct_offset[0]}, {duct_offset[1]}, {duct_offset[2]}])"
-    
-    action_code = f"""import numpy as np
 import viser.transforms as vtf
 
 # --- Get poses ---
 yellow_tape_pos, yellow_tape_quat = get_object_pose("yellow tape")
 yellow_tape_pos += np.array([{total_offset_yellow_tape[0]}, {total_offset_yellow_tape[1]}, {total_offset_yellow_tape[2]}]) 
-yellow_tape_pos += {yellow_offset_str}
 duct_tape_pos, duct_tape_quat = get_object_pose("duct tape")
 duct_tape_pos += np.array([{total_offset_duct_tape[0]}, {total_offset_duct_tape[1]}, {total_offset_duct_tape[2]}]) 
-duct_tape_pos += {duct_offset_str}
 
 arm1_pos, _ = get_arm1_gripper_pose()
 arm0_pos, _ = get_arm0_gripper_pose()
@@ -236,29 +229,12 @@ goto_pose_arm0(shifted_arm0_pos, arm0_quat)
 goto_home_joint_position_arm1()
 goto_home_joint_position_arm0()
 
-# Arm0: drop cube in bowl, shifted to the left because the tape is slightly off-center in the robot's grasp
+# Arm0: drop yellow tape at duct tape position, shifted to the left because the tape is slightly off-center in the robot's grasp
 goto_pose_arm0((duct_tape_pos+np.array([-0.02, 0, 0.05])), gripper_down_quat, z_approach=0.15)
 open_gripper_arm0()
 goto_pose_arm0((duct_tape_pos+np.array([0, 0, 0.2])), gripper_down_quat)
 goto_home_joint_position_arm0()
     """
-
-#     action_code = """import numpy as np
-# import viser.transforms as vtf
-
-# # --- Get poses ---
-# yellow_tape_pos, yellow_tape_quat = get_object_pose("yellow tape")
-# yellow_tape_pos += np.array([0.0, -0.7, 0.0]) 
-# duct_tape_pos, duct_tape_quat = get_object_pose("duct tape")
-
-# arm1_pos, _ = get_arm1_gripper_pose()
-# arm0_pos, _ = get_arm0_gripper_pose()
-# handover_pos = (arm1_pos + arm0_pos) / 2
-# arm0_handover_pos = handover_pos.copy()
-# # Need a way to get the width of the yellow tape that isnt privileged
-# # this is half the width of the franka gripper:
-# arm0_handover_pos[2] += 0.1025
-# """
 
     # 7. Run the step with the hardcoded action
     print("\nExecuting hardcoded action via exec_env.step()...")
@@ -268,7 +244,7 @@ goto_home_joint_position_arm0()
     # 8. Save the recorded video
     video_frames = exec_env.get_video_frames()
     if video_frames:
-        video_path = f"outputs/handover_video_{str(yellow_offset)}__{str(duct_offset)}.mp4"
+        video_path = f"outputs/handover_video_{f"{yellow_offset_args[0]}-{yellow_offset_args[1]}-{yellow_offset_args[2]}"}__{f"{duct_offset_args[0]}-{duct_offset_args[1]}-{duct_offset_args[2]}".replace(".", "_")}.mp4"
         print(f"Saving video with {len(video_frames)} frames to {video_path}...")
         imageio.mimsave(video_path, video_frames, fps=20)
         print(f"Video saved to {video_path}")
