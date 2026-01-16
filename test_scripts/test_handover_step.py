@@ -59,10 +59,40 @@ def main():
 
     # --- Manually set object position (relative offset) ---
     sim = low_level_env.robosuite_env.sim
+
+    # 1. Get the table center
+    table_center = sim.data.site_xpos[sim.model.site_name2id("table0_top")]
+
+    total_offset_yellow_tape = np.array([0.0, 0.0, 0.0])
+    total_offset_duct_tape = np.array([0.0, 0.0, 0.0])
+
+    # 2. Get current yellow tape position
+    yellow_tape_joint = low_level_env.robosuite_env.yellow_tape.joints[0]
+    yellow_qpos = sim.data.get_joint_qpos(yellow_tape_joint).copy()
+    duct_tape_joint = low_level_env.robosuite_env.duct_tape.joints[0]
+    duct_qpos = sim.data.get_joint_qpos(duct_tape_joint).copy()
     
+    # 3. Calculate offset to center it (keeping original Z height)
+    yellow_offset = table_center - yellow_qpos[:3]
+    yellow_offset[2] = 0 # Optional: don't shift Z if you want it to stay on the surface
+    duct_offset = table_center - duct_qpos[:3]
+    duct_offset[2] = 0 # Optional: don't shift Z if you want it to stay on the surface
+    # print the offset
+    print(f"Yellow offset: {yellow_offset}")
+    print(f"Duct offset: {duct_offset}")
+    # Apply the offset (move the yellow tape to the table center)
+    yellow_qpos[:3] += yellow_offset
+    sim.data.set_joint_qpos(yellow_tape_joint, yellow_qpos)
+    total_offset_yellow_tape += yellow_offset
+    duct_qpos[:3] += duct_offset
+    sim.data.set_joint_qpos(duct_tape_joint, duct_qpos)
+    total_offset_duct_tape += duct_offset
+
     # Define offsets [dx, dy, dz]
-    yellow_offset = np.array([0.0, -0.7, 0.0]) 
-    duct_offset = np.array([0.0, 0.0, 0.0])
+    yellow_offset = np.array([0.2, 0.6, 0.0])
+    duct_offset = np.array([-0.3, -0.6, 0.0])
+    total_offset_yellow_tape += yellow_offset
+    total_offset_duct_tape += duct_offset
 
     # Yellow tape
     yellow_tape_joint = low_level_env.robosuite_env.yellow_tape.joints[0]
@@ -77,15 +107,18 @@ def main():
     sim.data.set_joint_qpos(duct_tape_joint, duct_qpos)
 
     sim.forward()
+    print(f"Total offset yellow tape: {total_offset_yellow_tape}")
+    print(f"Total offset duct tape: {total_offset_duct_tape}")
     # ------------------------------------
 
-    action_code = """import numpy as np
+    action_code = f"""import numpy as np
 import viser.transforms as vtf
 
 # --- Get poses ---
 yellow_tape_pos, yellow_tape_quat = get_object_pose("yellow tape")
-yellow_tape_pos += np.array([0.0, -0.7, 0.0]) 
+yellow_tape_pos += np.array([{total_offset_yellow_tape[0]}, {total_offset_yellow_tape[1]}, {total_offset_yellow_tape[2]}]) 
 duct_tape_pos, duct_tape_quat = get_object_pose("duct tape")
+duct_tape_pos += np.array([{total_offset_duct_tape[0]}, {total_offset_duct_tape[1]}, {total_offset_duct_tape[2]}]) 
 
 arm1_pos, _ = get_arm1_gripper_pose()
 arm0_pos, _ = get_arm0_gripper_pose()
@@ -147,6 +180,23 @@ open_gripper_arm0()
 goto_pose_arm0((duct_tape_pos+np.array([0, 0, 0.2])), gripper_down_quat)
 goto_home_joint_position_arm0()
     """
+
+#     action_code = """import numpy as np
+# import viser.transforms as vtf
+
+# # --- Get poses ---
+# yellow_tape_pos, yellow_tape_quat = get_object_pose("yellow tape")
+# yellow_tape_pos += np.array([0.0, -0.7, 0.0]) 
+# duct_tape_pos, duct_tape_quat = get_object_pose("duct tape")
+
+# arm1_pos, _ = get_arm1_gripper_pose()
+# arm0_pos, _ = get_arm0_gripper_pose()
+# handover_pos = (arm1_pos + arm0_pos) / 2
+# arm0_handover_pos = handover_pos.copy()
+# # Need a way to get the width of the yellow tape that isnt privileged
+# # this is half the width of the franka gripper:
+# arm0_handover_pos[2] += 0.1025
+# """
 
     # 7. Run the step with the hardcoded action
     print("\nExecuting hardcoded action via exec_env.step()...")
