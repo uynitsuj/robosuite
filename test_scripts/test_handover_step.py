@@ -3,6 +3,7 @@ import sys
 import argparse
 import numpy as np
 import imageio
+from collections import OrderedDict
 import robosuite.macros as macros
 
 # Set the image convention to opencv so that the images are automatically rendered "right side up"
@@ -65,6 +66,12 @@ Examples:
         default='0.3,-0.5,0.0',
         help='Duct tape offset as comma-separated x,y,z values (default: 0.0,0.7,0.0)'
     )
+    parser.add_argument(
+        '--joint_state_fps',
+        type=float,
+        default=30.0,
+        help='Sampling rate for joint state collection in fps (default: 30.0)'
+    )
     
     args = parser.parse_args()
     
@@ -87,6 +94,7 @@ Examples:
         viser_debug=False,
         privileged=True,
         enable_render=False,
+        use_wrist_cameras=True,  # Enable wrist cameras for data collection
     )
 
     # 2. Define the configuration for the high-level code execution environment
@@ -102,9 +110,14 @@ Examples:
     print("Initializing high-level CodeExecutionEnvBase...")
     exec_env = CodeExecutionEnvBase(cfg)
 
-    # 4. Enable video recording
-    print("Enabling video capture...")
+    # 4. Enable video recording and joint state collection
+    # Convert fps to step frequency: simulation runs at ~500Hz, so steps_per_sample = 500 / fps
+    SIMULATION_FPS = 500.0  # Simulation timestep is 0.002s = 500Hz
+    joint_state_freq_steps = max(1, int(SIMULATION_FPS / args.joint_state_fps))
+    actual_fps = SIMULATION_FPS / joint_state_freq_steps
+    print(f"Enabling video capture and joint state collection (target: {args.joint_state_fps} fps, actual: {actual_fps:.2f} fps, every {joint_state_freq_steps} steps)...")
     exec_env.enable_video_capture(True)
+    low_level_env.enable_joint_state_collection(True, clear=True, freq=joint_state_freq_steps)
 
     # 5. Reset the environment
     print("Resetting environment...")
@@ -240,16 +253,77 @@ goto_home_joint_position_arm0()
     print("\nExecuting hardcoded action via exec_env.step()...")
     # This call triggers exec(action_code, ...) inside the executor
     obs, reward, terminated, truncated, info = exec_env.step(action_code)
-
-    # 8. Save the recorded video
-    video_frames = exec_env.get_video_frames()
-    if video_frames:
-        video_path = f"outputs/handover_video_{f"{yellow_offset_args[0]}-{yellow_offset_args[1]}-{yellow_offset_args[2]}"}__{f"{duct_offset_args[0]}-{duct_offset_args[1]}-{duct_offset_args[2]}".replace(".", "_")}.mp4"
-        print(f"Saving video with {len(video_frames)} frames to {video_path}...")
-        imageio.mimsave(video_path, video_frames, fps=20)
-        print(f"Video saved to {video_path}")
+    
+    # 9. Save the recorded videos (separate videos for each camera)
+    all_video_frames = low_level_env.get_camera_frames()
+    
+    # Base filename for videos
+    base_filename = f"handover_{f"{yellow_offset_args[0]}-{yellow_offset_args[1]}-{yellow_offset_args[2]}"}__{f"{duct_offset_args[0]}-{duct_offset_args[1]}-{duct_offset_args[2]}".replace(".", "_")}"
+    
+    if all_video_frames:
+        # Save agentview camera video
+        if "agentview" in all_video_frames and all_video_frames["agentview"]:
+            agentview_frames = all_video_frames["agentview"]
+            agentview_path = f"dataset/{base_filename}_agentview.mp4"
+            print(f"Saving agentview video with {len(agentview_frames)} frames to {agentview_path}...")
+            imageio.mimsave(agentview_path, agentview_frames, fps=20)
+            print(f"Agentview video saved to {agentview_path}")
+        
+        # Save robot0 wrist camera video
+        if "robot0_eye_in_hand" in all_video_frames and all_video_frames["robot0_eye_in_hand"]:
+            robot0_frames = all_video_frames["robot0_eye_in_hand"]
+            robot0_path = f"dataset/{base_filename}_robot0_wrist.mp4"
+            print(f"Saving robot0 wrist camera video with {len(robot0_frames)} frames to {robot0_path}...")
+            imageio.mimsave(robot0_path, robot0_frames, fps=20)
+            print(f"Robot0 wrist camera video saved to {robot0_path}")
+        
+        # Save robot1 wrist camera video
+        if "robot1_eye_in_hand" in all_video_frames and all_video_frames["robot1_eye_in_hand"]:
+            robot1_frames = all_video_frames["robot1_eye_in_hand"]
+            robot1_path = f"dataset/{base_filename}_robot1_wrist.mp4"
+            print(f"Saving robot1 wrist camera video with {len(robot1_frames)} frames to {robot1_path}...")
+            imageio.mimsave(robot1_path, robot1_frames, fps=20)
+            print(f"Robot1 wrist camera video saved to {robot1_path}")
     else:
         print("No video frames were captured.")
+    
+    # 10. Save joint states to .npz files (separate files for each arm)
+    joint_states = low_level_env.get_collected_joint_states(clear=False)
+    if joint_states:
+        print(f"\nSaving joint states to .npz files...")
+        base_filename = f"handover_{f"{yellow_offset_args[0]}-{yellow_offset_args[1]}-{yellow_offset_args[2]}"}__{f"{duct_offset_args[0]}-{duct_offset_args[1]}-{duct_offset_args[2]}".replace(".", "_")}"
+        
+        # Prepare data for robot0 (arm0)
+        robot0_data = {}
+        if joint_states and "robot0_joint_pos" in joint_states[0]:
+            robot0_data["joint_positions"] = np.stack([state["robot0_joint_pos"] for state in joint_states])
+        if joint_states and "robot0_joint_vel" in joint_states[0]:
+            robot0_data["joint_velocities"] = np.stack([state["robot0_joint_vel"] for state in joint_states])
+        if joint_states and "robot0_gripper_qpos" in joint_states[0]:
+            robot0_data["gripper_positions"] = np.stack([state["robot0_gripper_qpos"] for state in joint_states])
+        
+        # Prepare data for robot1 (arm1)
+        robot1_data = {}
+        if joint_states and "robot1_joint_pos" in joint_states[0]:
+            robot1_data["joint_positions"] = np.stack([state["robot1_joint_pos"] for state in joint_states])
+        if joint_states and "robot1_joint_vel" in joint_states[0]:
+            robot1_data["joint_velocities"] = np.stack([state["robot1_joint_vel"] for state in joint_states])
+        if joint_states and "robot1_gripper_qpos" in joint_states[0]:
+            robot1_data["gripper_positions"] = np.stack([state["robot1_gripper_qpos"] for state in joint_states])
+        
+        # Save robot0 joint states
+        if robot0_data:
+            robot0_filename = f"dataset/{base_filename}_robot0_joints.npz"
+            np.savez_compressed(robot0_filename, **robot0_data)
+            print(f"Robot0 (arm0) joint states saved to {robot0_filename} ({len(joint_states)} samples)")
+        
+        # Save robot1 joint states
+        if robot1_data:
+            robot1_filename = f"dataset/{base_filename}_robot1_joints.npz"
+            np.savez_compressed(robot1_filename, **robot1_data)
+            print(f"Robot1 (arm1) joint states saved to {robot1_filename} ({len(joint_states)} samples)")
+    else:
+        print("No joint states were collected.")
 
     # 9. Print execution results and logs
     print("\n" + "="*40)
