@@ -1,5 +1,6 @@
 import os
 import sys
+import argparse
 import numpy as np
 import imageio
 import robosuite.macros as macros
@@ -23,7 +24,57 @@ from envs.control.base_executor import CodeExecutionEnvBase, CodeExecEnvConfig
 from api.franka_priviledged_api import FrankaControlTapeHandoverPrivilegedApi
 from api.base_api import register_api
 
+def parse_offset_list(offset_str):
+    """
+    Parse a comma-separated string of floats into a numpy array.
+    
+    Args:
+        offset_str: String like "0.0,-0.7,0.0" or "0.0,0.7,0.0"
+    
+    Returns:
+        numpy array of floats
+    """
+    try:
+        values = [float(x.strip()) for x in offset_str.split(',')]
+        if len(values) != 3:
+            raise ValueError("Offset must contain exactly 3 values (x, y, z)")
+        return np.array(values)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(f"Invalid offset format '{offset_str}': {e}. Expected format: 'x,y,z' (e.g., '0.0,-0.7,0.0')")
+
 def main():
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(
+        description="Test handover step with configurable tape offsets",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python test_handover_step.py --yellow_offset 0.0,-0.7,0.0 --duct_offset 0.0,0.7,0.0
+  python test_handover_step.py --yellow_offset 0.1,-0.6,0.0 --duct_offset -0.1,0.6,0.0
+        """
+    )
+    parser.add_argument(
+        '--yellow_offset',
+        type=parse_offset_list,
+        default='0.0,-0.7,0.0',
+        help='Yellow tape offset as comma-separated x,y,z values (default: 0.0,-0.7,0.0)'
+    )
+    parser.add_argument(
+        '--duct_offset',
+        type=parse_offset_list,
+        default='0.0,0.7,0.0',
+        help='Duct tape offset as comma-separated x,y,z values (default: 0.0,0.7,0.0)'
+    )
+    
+    args = parser.parse_args()
+    
+    # Extract offsets as numpy arrays
+    yellow_offset = args.yellow_offset
+    duct_offset = args.duct_offset
+    
+    print(f"Yellow tape offset: {yellow_offset}")
+    print(f"Duct tape offset: {duct_offset}")
+    
     # Register the API so CodeExecutionEnvBase can find it
     # The name here is used by CodeExecutionEnvBase to look up the API
     register_api("franka-handover-privileged", lambda env: FrankaControlTapeHandoverPrivilegedApi(env))
@@ -60,10 +111,7 @@ def main():
     # --- Manually set object position (relative offset) ---
     sim = low_level_env.robosuite_env.sim
     
-    # Define offsets [dx, dy, dz]
-    yellow_offset = np.array([0.0, -0.7, 0.0]) 
-    duct_offset = np.array([0.0, 0.0, 0.0])
-
+    # Offsets are now passed in via command line arguments
     # Yellow tape
     yellow_tape_joint = low_level_env.robosuite_env.yellow_tape.joints[0]
     yellow_qpos = sim.data.get_joint_qpos(yellow_tape_joint).copy()
@@ -79,13 +127,18 @@ def main():
     sim.forward()
     # ------------------------------------
 
-    action_code = """import numpy as np
+    # Format offsets for use in action code string
+    yellow_offset_str = f"np.array([{yellow_offset[0]}, {yellow_offset[1]}, {yellow_offset[2]}])"
+    duct_offset_str = f"np.array([{duct_offset[0]}, {duct_offset[1]}, {duct_offset[2]}])"
+    
+    action_code = f"""import numpy as np
 import viser.transforms as vtf
 
 # --- Get poses ---
 yellow_tape_pos, yellow_tape_quat = get_object_pose("yellow tape")
-yellow_tape_pos += np.array([0.0, -0.7, 0.0]) 
+yellow_tape_pos += {yellow_offset_str}
 duct_tape_pos, duct_tape_quat = get_object_pose("duct tape")
+duct_tape_pos += {duct_offset_str}
 
 arm1_pos, _ = get_arm1_gripper_pose()
 arm0_pos, _ = get_arm0_gripper_pose()
@@ -156,7 +209,7 @@ goto_home_joint_position_arm0()
     # 8. Save the recorded video
     video_frames = exec_env.get_video_frames()
     if video_frames:
-        video_path = "handover_video.mp4"
+        video_path = f"outputs/handover_video_{str(yellow_offset)}__{str(duct_offset)}.mp4"
         print(f"Saving video with {len(video_frames)} frames to {video_path}...")
         imageio.mimsave(video_path, video_frames, fps=20)
         print(f"Video saved to {video_path}")
