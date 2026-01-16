@@ -6,15 +6,15 @@ calc() {
 }
 
 # Range definitions
-YELLOW_X_MIN=-0.3
+YELLOW_X_MIN=-0.2
 YELLOW_X_MAX=0.2
-YELLOW_Y_MIN=-0.6
-YELLOW_Y_MAX=0.0
+YELLOW_Y_MIN=0.15
+YELLOW_Y_MAX=0.6
 
-DUCT_X_MIN=-0.3
+DUCT_X_MIN=-0.2
 DUCT_X_MAX=0.2
-DUCT_Y_MIN=0.0
-DUCT_Y_MAX=0.6
+DUCT_Y_MIN=-0.6
+DUCT_Y_MAX=-0.15
 
 # Number of positions per tape (arranged in a grid)
 NUM_POSITIONS=8
@@ -22,12 +22,6 @@ NUM_POSITIONS=8
 # Grid dimensions for 8 positions (4×2 grid: 4 in X, 2 in Y)
 NUM_X=4
 NUM_Y=2
-
-# Base positions for yellow and duct tape (used as offsets from these)
-YELLOW_BASE_X=0.0
-YELLOW_BASE_Y=0.0
-DUCT_BASE_X=0.0
-DUCT_BASE_Y=0.0
 
 # Ensure outputs directory exists
 mkdir -p outputs
