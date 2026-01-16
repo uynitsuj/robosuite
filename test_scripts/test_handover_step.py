@@ -7,6 +7,12 @@ import robosuite.macros as macros
 # Set the image convention to opencv so that the images are automatically rendered "right side up"
 macros.IMAGE_CONVENTION = "opencv"
 
+# fix cuda error
+import os
+os.environ["PATH"] = "/usr/local/cuda-12.9/bin:" + os.environ.get("PATH", "")
+os.environ["LD_LIBRARY_PATH"] = "/usr/local/cuda-12.9/lib64:" + os.environ.get("LD_LIBRARY_PATH", "")
+os.environ["XLA_FLAGS"] = "--xla_gpu_cuda_data_dir=/usr/local/cuda-12.9"
+
 # Add the root directory to sys.path
 root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(root_dir)
@@ -51,11 +57,34 @@ def main():
     print("Resetting environment...")
     obs, info = exec_env.reset()
 
+    # --- Manually set object position (relative offset) ---
+    sim = low_level_env.robosuite_env.sim
+    
+    # Define offsets [dx, dy, dz]
+    yellow_offset = np.array([0.0, -0.7, 0.0]) 
+    duct_offset = np.array([0.0, 0.0, 0.0])
+
+    # Yellow tape
+    yellow_tape_joint = low_level_env.robosuite_env.yellow_tape.joints[0]
+    yellow_qpos = sim.data.get_joint_qpos(yellow_tape_joint).copy()
+    yellow_qpos[:3] += yellow_offset
+    sim.data.set_joint_qpos(yellow_tape_joint, yellow_qpos)
+
+    # Duct tape
+    duct_tape_joint = low_level_env.robosuite_env.duct_tape.joints[0]
+    duct_qpos = sim.data.get_joint_qpos(duct_tape_joint).copy()
+    duct_qpos[:3] += duct_offset
+    sim.data.set_joint_qpos(duct_tape_joint, duct_qpos)
+
+    sim.forward()
+    # ------------------------------------
+
     action_code = """import numpy as np
 import viser.transforms as vtf
 
 # --- Get poses ---
 yellow_tape_pos, yellow_tape_quat = get_object_pose("yellow tape")
+yellow_tape_pos += np.array([0.0, -0.7, 0.0]) 
 duct_tape_pos, duct_tape_quat = get_object_pose("duct tape")
 
 arm1_pos, _ = get_arm1_gripper_pose()
