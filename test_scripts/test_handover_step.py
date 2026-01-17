@@ -254,17 +254,24 @@ goto_home_joint_position_arm0()
     # This call triggers exec(action_code, ...) inside the executor
     obs, reward, terminated, truncated, info = exec_env.step(action_code)
     
-    # 9. Save the recorded videos (separate videos for each camera)
-    all_video_frames = low_level_env.get_camera_frames()
+    # 9. Create directory based on tape initialization information
+    # Directory name encodes the yellow and duct tape offsets
+    dir_name = f"handover_yellow_{yellow_offset_args[0]}_{yellow_offset_args[1]}_{yellow_offset_args[2]}_duct_{duct_offset_args[0]}_{duct_offset_args[1]}_{duct_offset_args[2]}".replace(".", "_").replace("-", "neg")
+    dataset_dir = os.path.join("dataset", dir_name)
+    os.makedirs(dataset_dir, exist_ok=True)
+    print(f"Created directory: {dataset_dir}")
     
-    # Base filename for videos
-    base_filename = f"handover_{f"{yellow_offset_args[0]}-{yellow_offset_args[1]}-{yellow_offset_args[2]}"}__{f"{duct_offset_args[0]}-{duct_offset_args[1]}-{duct_offset_args[2]}".replace(".", "_")}"
+    # Base filename for files (without the full path)
+    base_filename = "handover"
+    
+    # 10. Save the recorded videos (separate videos for each camera)
+    all_video_frames = low_level_env.get_camera_frames()
     
     if all_video_frames:
         # Save agentview camera video
         if "agentview" in all_video_frames and all_video_frames["agentview"]:
             agentview_frames = all_video_frames["agentview"]
-            agentview_path = f"dataset/{base_filename}_agentview.mp4"
+            agentview_path = os.path.join(dataset_dir, f"{base_filename}_agentview.mp4")
             print(f"Saving agentview video with {len(agentview_frames)} frames to {agentview_path}...")
             imageio.mimsave(agentview_path, agentview_frames, fps=20)
             print(f"Agentview video saved to {agentview_path}")
@@ -272,7 +279,7 @@ goto_home_joint_position_arm0()
         # Save robot0 wrist camera video
         if "robot0_eye_in_hand" in all_video_frames and all_video_frames["robot0_eye_in_hand"]:
             robot0_frames = all_video_frames["robot0_eye_in_hand"]
-            robot0_path = f"dataset/{base_filename}_robot0_wrist.mp4"
+            robot0_path = os.path.join(dataset_dir, f"{base_filename}_robot0_wrist.mp4")
             print(f"Saving robot0 wrist camera video with {len(robot0_frames)} frames to {robot0_path}...")
             imageio.mimsave(robot0_path, robot0_frames, fps=20)
             print(f"Robot0 wrist camera video saved to {robot0_path}")
@@ -280,18 +287,17 @@ goto_home_joint_position_arm0()
         # Save robot1 wrist camera video
         if "robot1_eye_in_hand" in all_video_frames and all_video_frames["robot1_eye_in_hand"]:
             robot1_frames = all_video_frames["robot1_eye_in_hand"]
-            robot1_path = f"dataset/{base_filename}_robot1_wrist.mp4"
+            robot1_path = os.path.join(dataset_dir, f"{base_filename}_robot1_wrist.mp4")
             print(f"Saving robot1 wrist camera video with {len(robot1_frames)} frames to {robot1_path}...")
             imageio.mimsave(robot1_path, robot1_frames, fps=20)
             print(f"Robot1 wrist camera video saved to {robot1_path}")
     else:
         print("No video frames were captured.")
     
-    # 10. Save joint states to .npz files (separate files for each arm)
+    # 11. Save joint states to .npz files (separate files for each arm)
     joint_states = low_level_env.get_collected_joint_states(clear=False)
     if joint_states:
         print(f"\nSaving joint states to .npz files...")
-        base_filename = f"handover_{f"{yellow_offset_args[0]}-{yellow_offset_args[1]}-{yellow_offset_args[2]}"}__{f"{duct_offset_args[0]}-{duct_offset_args[1]}-{duct_offset_args[2]}".replace(".", "_")}"
         
         # Prepare data for robot0 (arm0)
         robot0_data = {}
@@ -313,13 +319,13 @@ goto_home_joint_position_arm0()
         
         # Save robot0 joint states
         if robot0_data:
-            robot0_filename = f"dataset/{base_filename}_robot0_joints.npz"
+            robot0_filename = os.path.join(dataset_dir, f"{base_filename}_robot0_joints.npz")
             np.savez_compressed(robot0_filename, **robot0_data)
             print(f"Robot0 (arm0) joint states saved to {robot0_filename} ({len(joint_states)} samples)")
         
         # Save robot1 joint states
         if robot1_data:
-            robot1_filename = f"dataset/{base_filename}_robot1_joints.npz"
+            robot1_filename = os.path.join(dataset_dir, f"{base_filename}_robot1_joints.npz")
             np.savez_compressed(robot1_filename, **robot1_data)
             print(f"Robot1 (arm1) joint states saved to {robot1_filename} ({len(joint_states)} samples)")
     else:
