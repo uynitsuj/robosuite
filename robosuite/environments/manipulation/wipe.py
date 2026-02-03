@@ -1,4 +1,3 @@
-import multiprocessing
 from collections import OrderedDict
 
 import numpy as np
@@ -386,59 +385,15 @@ class Wipe(ManipulationEnv):
         """
         Reward function for the task.
 
-        Sparse un-normalized reward:
-
-            - a discrete reward of self.unit_wiped_reward is provided per single dirt (peg) wiped during this step
-            - a discrete reward of self.task_complete_reward is provided if all dirt is wiped
-
-        Note that if the arm is either colliding or near its joint limit, a reward of 0 will be automatically given
-
-        Un-normalized summed components if using reward shaping (individual components can be set to 0:
-
-            - Reaching: in [0, self.distance_multiplier], proportional to distance between wiper and centroid of dirt
-              and zero if the table has been fully wiped clean of all the dirt
-            - Table Contact: in {0, self.wipe_contact_reward}, non-zero if wiper is in contact with table
-            - Wiping: in {0, self.unit_wiped_reward}, non-zero for each dirt (peg) wiped during this step
-            - Cleaned: in {0, self.task_complete_reward}, non-zero if no dirt remains on the table
-            - Collision / Joint Limit Penalty: in {self.arm_limit_collision_penalty, 0}, nonzero if robot arm
-              is colliding with an object
-              - Note that if this value is nonzero, no other reward components can be added
-            - Large Force Penalty: in [-inf, 0], scaled by wiper force and directly proportional to
-              self.excess_force_penalty_mul if the current force exceeds self.pressure_threshold_max
-            - Large Acceleration Penalty: in [-inf, 0], scaled by estimated wiper acceleration and directly
-              proportional to self.ee_accel_penalty
-
-        Note that the final per-step reward is normalized given the theoretical best episode return and then scaled:
-        reward_scale * (horizon /
-        (num_markers * unit_wiped_reward + horizon * (wipe_contact_reward + task_complete_reward)))
+        Returns the proportion of markers that have been wiped (0.0 to 1.0).
 
         Args:
             action (np array): [NOT USED]
 
         Returns:
-            float: reward value
+            float: reward value (proportion of markers wiped)
         """
-        reward = 0
-
-        total_force_ee = max(
-            [
-                np.linalg.norm(np.array(self.robots[0].recent_ee_forcetorques[arm].current[:3]))
-                for arm in self.robots[0].arms
-            ]
-        )
-
-        # Neg Reward from collisions of the arm with the table
-        # if self.check_contact(self.robots[0].robot_model):
-        #     if self.reward_shaping:
-        #         reward = self.arm_limit_collision_penalty
-        #     self.collisions += 1
-        # elif self.robots[0].check_q_limits():
-        #     if self.reward_shaping:
-        #         reward = self.arm_limit_collision_penalty
-        #     self.collisions += 1
-        # else:
-        # If the arm is not colliding or in joint limits, we check if we are wiping
-        # (we don't want to reward wiping if there are unsafe situations)
+        # Update wiped markers based on current tool position
         active_markers = []
 
         # Current 3D location of the corners of the wiping tool in world frame
@@ -446,8 +401,7 @@ class Wipe(ManipulationEnv):
             c_geoms = self.robots[0].gripper[arm].important_geoms["corners"]
             active_markers += self._get_active_markers(c_geoms)
 
-        # Obtain the list of currently active (wiped) markers that where not wiped before
-        # These are the markers we are wiping at this step
+        # Obtain the list of currently active (wiped) markers that were not wiped before
         lall = np.where(np.isin(active_markers, self.wiped_markers, invert=True))
         new_active_markers = np.array(active_markers)[lall]
 
@@ -457,72 +411,11 @@ class Wipe(ManipulationEnv):
             new_active_marker_geom_id = self.sim.model.geom_name2id(new_active_marker.visual_geoms[0])
             # Make this marker transparent since we wiped it (alpha = 0)
             self.sim.model.geom_rgba[new_active_marker_geom_id][3] = 0
-            # Add this marker the wiped list
+            # Add this marker to the wiped list
             self.wiped_markers.append(new_active_marker)
-            # Add reward if we're using the dense reward
-            if self.reward_shaping:
-                reward += self.unit_wiped_reward
 
-        # Additional reward components if using dense rewards
-        if self.reward_shaping:
-            # If we haven't wiped all the markers yet, add a smooth reward for getting closer
-            # to the centroid of the dirt to wipe
-            if len(self.wiped_markers) < self.num_markers:
-                _, _, mean_pos_to_things_to_wipe = self._get_wipe_information()
-                mean_distance_to_things_to_wipe = np.linalg.norm(mean_pos_to_things_to_wipe)
-                reward += self.distance_multiplier * (
-                    1 - np.tanh(self.distance_th_multiplier * mean_distance_to_things_to_wipe)
-                )
-
-            # Reward for keeping contact
-            # print(f"has gripper contact: {self._has_gripper_contact}")
-            if self.sim.data.ncon != 0 and self._has_gripper_contact:
-                reward += self.wipe_contact_reward
-
-            # Penalty for excessive force with the end-effector
-            # print(f"total_force_ee: {total_force_ee}")
-            if total_force_ee > self.pressure_threshold_max:
-                reward -= self.excess_force_penalty_mul * total_force_ee
-                self.f_excess += 1
-
-            # Reward for pressing into table
-            # TODO: Need to include this computation somehow in the scaled reward computation
-            elif total_force_ee > self.pressure_threshold and self.sim.data.ncon > 1:
-                reward += self.wipe_contact_reward + 0.01 * total_force_ee
-                if self.sim.data.ncon > 50:
-                    reward += 10.0 * self.wipe_contact_reward
-
-            # Penalize large accelerations
-            reward -= self.ee_accel_penalty * max(
-                [np.mean(abs(self.robots[0].recent_ee_acc[arm].current)) for arm in self.robots[0].arms]
-            )
-
-        # Final reward if all wiped
-        if len(self.wiped_markers) == self.num_markers:
-            reward += self.task_complete_reward
-
-        # Printing results
-        if self.print_results:
-            string_to_print = (
-                "Process {pid}, timestep {ts:>4}: reward: {rw:8.4f}"
-                "wiped markers: {ws:>3} collisions: {sc:>3} f-excess: {fe:>3}".format(
-                    pid=id(multiprocessing.current_process()),
-                    ts=self.timestep,
-                    rw=reward,
-                    ws=len(self.wiped_markers),
-                    sc=self.collisions,
-                    fe=self.f_excess,
-                )
-            )
-            print(string_to_print)
-
-        # If we're scaling our reward, we normalize the per-step rewards given the theoretical best episode return
-        # This is equivalent to scaling the reward by:
-        #   reward_scale * (horizon /
-        #       (num_markers * unit_wiped_reward + horizon * (wipe_contact_reward + task_complete_reward)))
-        if self.reward_scale:
-            reward *= self.reward_scale * self.reward_normalization_factor
-        return reward
+        # Return proportion of markers wiped
+        return len(self.wiped_markers) / self.num_markers
 
     def _load_model(self):
         """
