@@ -247,28 +247,14 @@ class Lift(ManipulationEnv):
             float: reward value
         """
         reward = 0.0
-
-        # sparse completion reward
         if self._check_success():
-            reward = 2.25
-
-        # use a shaping reward
+            reward = 1.0
+        
         elif self.reward_shaping:
-
-            # reaching reward
-            dist = self._gripper_to_target(
-                gripper=self.robots[0].gripper, target=self.cube.root_body, target_type="body", return_distance=True
-            )
-            reaching_reward = 1 - np.tanh(10.0 * dist)
-            reward += reaching_reward
-
-            # grasping reward
-            if self._check_grasp(gripper=self.robots[0].gripper, object_geoms=self.cube):
-                reward += 0.25
-
-        # Scale reward if requested
-        if self.reward_scale is not None:
-            reward *= self.reward_scale / 2.25
+            cube_height = self.sim.data.body_xpos[self.cube_body_id][2]
+            table_height = self.model.mujoco_arena.table_offset[2]
+            reward = (cube_height - table_height) / 0.04 
+            reward = min(reward, 1.0)
 
         return reward
 
